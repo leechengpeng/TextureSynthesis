@@ -20,7 +20,7 @@ int main()
 	clock_t Start = clock();
 
 	TS::TextureSynthesis TS;
-	TS.synthesize(Sample, SynthesisTexture);
+	TS.synthesize(Sample, SynthesisTexture, true);
 
 	clock_t End = clock();
 	std::cout << "Time-consuming is: " << (End - Start) / 1000.0 << "s" << std::endl;

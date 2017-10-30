@@ -2,6 +2,7 @@
 #include <ctime>
 #include <vector>
 #include <opencv2\core.hpp>
+#include "TSVQ.hpp"
 
 namespace TS
 {
@@ -52,6 +53,12 @@ namespace TS
 		std::vector<uchar*> SampleNeighborhoods;
 		__calSampleNeighborhoods(vSampleTexture, SampleNeighborhoods);
 
+		LLL::TSVQ<uchar> Accelerator;
+		if (vAccelerate)
+		{
+			Accelerator.build(SampleNeighborhoods, m_NeighborhoodSize, 100);	//FIXME: magic number
+		}
+
 		for (int RowIndex = 0, Channels = vTexture.channels(); RowIndex < vTexture.rows; ++RowIndex)
 		{
 			auto pRows = vTexture.ptr<uchar>(RowIndex);
@@ -59,7 +66,15 @@ namespace TS
 			{
 				auto pNeighborhood = __calNeighborhoods(vTexture, CvPoint(ColIndex, RowIndex));
 
-				auto MostSimilarPixel = __getMostSimilarPixel(SampleNeighborhoods, pNeighborhood, vSampleTexture.channels());
+				const uchar* MostSimilarPixel = nullptr;
+				if (vAccelerate)
+				{
+					MostSimilarPixel = Accelerator.quantizeVector(pNeighborhood);
+				}
+				else
+				{
+					MostSimilarPixel = __getMostSimilarPixel(SampleNeighborhoods, pNeighborhood, vSampleTexture.channels());
+				}
 				MostSimilarPixel += m_NeighborhoodSize - vSampleTexture.channels();
 
 				_ASSERT(MostSimilarPixel);
