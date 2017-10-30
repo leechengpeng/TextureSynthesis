@@ -1,5 +1,7 @@
+#include <string>
 #include <iostream>
 #include <opencv2\core.hpp>
+#include <opencv2\imgproc.hpp>
 #include <opencv2\highgui\highgui.hpp>
 #include "TextureSynthesis.hpp"
 
@@ -12,11 +14,20 @@ int main()
 		return -1;
 	}
 
-	cv::Mat SynthesisTexture(64, 64, Sample.type());
+	unsigned TextureSize = 128;
+	cv::Mat SynthesisTexture(TextureSize, TextureSize, Sample.type());
+
+	clock_t Start = clock();
+
 	TS::TextureSynthesis TS;
 	TS.synthesize(Sample, SynthesisTexture);
 
-	cv::imshow("SynthesisTexture", SynthesisTexture);
+	clock_t End = clock();
+	std::cout << "Time-consuming is: " << (End - Start) / 1000.0 << "s" << std::endl;
+
+	// cv::imshow("SynthesisTexture", SynthesisTexture);
+	// TODO: add time to file name
+	cv::imwrite("Result/SynthesisTexture.jpg", SynthesisTexture);
 	cvWaitKey();
 
 	return 0;

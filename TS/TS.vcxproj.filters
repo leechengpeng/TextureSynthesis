@@ -23,5 +23,8 @@
     <ClInclude Include="TextureSynthesis.hpp">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="TSVQ.hpp">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
 </Project>

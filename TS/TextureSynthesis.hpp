@@ -11,40 +11,45 @@ namespace TS
 		TextureSynthesis();
 		~TextureSynthesis();
 
-		void synthesize(const cv::Mat& vSampleTexture, cv::Mat& vTexture);
+		void synthesize(const cv::Mat& vSampleTexture, cv::Mat& vTexture, bool vAccelerate = false);
 
 	private:
 		void __genNoiseTexture(cv::Mat& vTexture);
-		void __calSampleNeighborhoods(const cv::Mat& vSample, std::vector<std::vector<const uchar*>>& voSampleNeighborhoods);
-		void __calNeighborhoods(const cv::Mat& vImage, const CvPoint& vPoint, int NeighborhoodSize, std::vector<const uchar*>& voNeighborhoods);
+		void __calSampleNeighborhoods(const cv::Mat& vSample, std::vector<uchar*>& voSampleNeighborhoods);
+		uchar* __calNeighborhoods(const cv::Mat& vImage, const CvPoint& vPoint);
 
 		double __calEuclideanDistance(const uchar *vVectorsA, const uchar *vVectorsB, unsigned int vDim);
-		const uchar* __getMostSimilarPixel(const std::vector<std::vector<const uchar*>>& vSampleNeighborhoods, const std::vector<const uchar*>& vNeighborhoods, unsigned int vDim);
+		const uchar* __getMostSimilarPixel(const std::vector<uchar*>& vSampleNeighborhoods, uchar* vNeighborhoods, unsigned int vDim);
 
+		int m_Level;
 		int m_NeighborhoodSize;
-		int m_ResolutionLevel;
+		int m_TemplateSize;
+		int m_HalfTemplateSize;
 	};
 
-	TextureSynthesis::TextureSynthesis() : m_NeighborhoodSize(9), m_ResolutionLevel(1)
+	TextureSynthesis::TextureSynthesis() : m_TemplateSize(9), m_Level(1), m_NeighborhoodSize(0), m_HalfTemplateSize(0)
 	{
 
 	}
 
 	TextureSynthesis::~TextureSynthesis()
 	{
-		m_NeighborhoodSize = 9;
-		m_ResolutionLevel  = 1;
+		m_Level = 1;
+		m_TemplateSize = 9;
 	}
 
 	// *********************************************************
 	// Function:
-	void TextureSynthesis::synthesize(const cv::Mat& vSampleTexture, cv::Mat& vTexture)
+	void TextureSynthesis::synthesize(const cv::Mat& vSampleTexture, cv::Mat& vTexture, bool vAccelerate)
 	{
-		_ASSERT(!vTexture.empty());
+		_ASSERT(!vTexture.empty() && m_TemplateSize > 2 && m_TemplateSize % 2 != 0);
+
+		m_HalfTemplateSize = (m_TemplateSize - 1) / 2;
+		m_NeighborhoodSize = (m_HalfTemplateSize * m_TemplateSize + m_HalfTemplateSize + 1) * vSampleTexture.channels();
 
 		__genNoiseTexture(vTexture);
 
-		std::vector<std::vector<const uchar*>> SampleNeighborhoods;
+		std::vector<uchar*> SampleNeighborhoods;
 		__calSampleNeighborhoods(vSampleTexture, SampleNeighborhoods);
 
 		for (int RowIndex = 0, Channels = vTexture.channels(); RowIndex < vTexture.rows; ++RowIndex)
@@ -52,10 +57,10 @@ namespace TS
 			auto pRows = vTexture.ptr<uchar>(RowIndex);
 			for (int ColIndex = 0; ColIndex < vTexture.cols; ++ColIndex)
 			{
-				std::vector<const uchar*> Neighborhoods;
-				__calNeighborhoods(vTexture, CvPoint(ColIndex, RowIndex), m_NeighborhoodSize, Neighborhoods);
+				auto pNeighborhood = __calNeighborhoods(vTexture, CvPoint(ColIndex, RowIndex));
 
-				auto MostSimilarPixel = __getMostSimilarPixel(SampleNeighborhoods, Neighborhoods, vSampleTexture.channels());
+				auto MostSimilarPixel = __getMostSimilarPixel(SampleNeighborhoods, pNeighborhood, vSampleTexture.channels());
+				MostSimilarPixel += m_NeighborhoodSize - vSampleTexture.channels();
 
 				_ASSERT(MostSimilarPixel);
 				memcpy(pRows + ColIndex * vSampleTexture.channels(), MostSimilarPixel, vSampleTexture.channels());
@@ -65,29 +70,22 @@ namespace TS
 
 	// *********************************************************
 	// Function:
-	const uchar* TextureSynthesis::__getMostSimilarPixel(const std::vector<std::vector<const uchar*>>& vSampleNeighborhoods, const std::vector<const uchar*>& vNeighborhoods, unsigned int vDim)
+	const uchar* TextureSynthesis::__getMostSimilarPixel(const std::vector<uchar*>& vSampleNeighborhoods, uchar* vNeighborhoods, unsigned int vDim)
 	{
-		double MinLength = 0.0;
-		const uchar* MostSimilarPixel = nullptr;
+		_ASSERT(!vSampleNeighborhoods.empty());
 
 		auto Iter = vSampleNeighborhoods.begin();
-		for (size_t i = 0; i < Iter->size(); ++i)
-		{
-			MinLength += __calEuclideanDistance((*Iter)[i], vNeighborhoods[i], vDim);
-		}
+
+		uchar* MostSimilarPixel = *Iter;
+		double MinLength = __calEuclideanDistance(*Iter, vNeighborhoods, m_NeighborhoodSize);
 
 		while (Iter != vSampleNeighborhoods.end())
 		{
-			double Length = 0.0;
-			for (size_t i = 0; i < Iter->size(); ++i)
-			{
-				Length += __calEuclideanDistance((*Iter)[i], vNeighborhoods[i], vDim);
-			}
-
+			double Length = __calEuclideanDistance(*Iter, vNeighborhoods, m_NeighborhoodSize);
 			if (Length < MinLength)
 			{
 				MinLength = Length;
-				MostSimilarPixel = Iter->back();
+				MostSimilarPixel = *Iter;
 			}
 
 			++Iter;
@@ -105,7 +103,8 @@ namespace TS
 		double Sum = 0.0;
 		for (unsigned int Index = 0; Index < vDim; ++Index)
 		{
-			Sum += (vVectorsA[Index] - vVectorsB[Index]) * (vVectorsA[Index] - vVectorsB[Index]);
+			double Difference = vVectorsA[Index] - vVectorsB[Index];
+			Sum += Difference * Difference;
 		}
 
 		return Sum;
@@ -132,47 +131,50 @@ namespace TS
 
 	// *********************************************************
 	// Function:
-	void TextureSynthesis::__calSampleNeighborhoods(const cv::Mat& vSample, std::vector<std::vector<const uchar*>>& voSampleNeighborhoods)
+	void TextureSynthesis::__calSampleNeighborhoods(const cv::Mat& vSample, std::vector<uchar*>& voSampleNeighborhoods)
 	{
 		for (int RowIndex = 0; RowIndex < vSample.rows; ++RowIndex)
 		{
 			for (int ColIndex = 0; ColIndex < vSample.cols; ++ColIndex)
 			{
-				std::vector<const uchar*> Neighborhoods;
-				__calNeighborhoods(vSample, CvPoint(ColIndex, RowIndex), m_NeighborhoodSize, Neighborhoods);
-
-				voSampleNeighborhoods.push_back(Neighborhoods);
+				voSampleNeighborhoods.push_back(__calNeighborhoods(vSample, CvPoint(ColIndex, RowIndex)));
 			}
 		}
 	}
 
 	// *********************************************************
 	// Function:
-	void TextureSynthesis::__calNeighborhoods(const cv::Mat& vImage, const CvPoint& vPoint, int NeighborhoodSize, std::vector<const uchar*>& voNeighborhoods)
+	uchar* TextureSynthesis::__calNeighborhoods(const cv::Mat& vImage, const CvPoint& vPoint)
 	{
-		_ASSERT(NeighborhoodSize > 2 && NeighborhoodSize % 2 != 0);
-	
-		int NeighborhoodCols     = NeighborhoodSize;
-		int NeighborhoodRows     = (NeighborhoodSize + 1) / 2;
-		int HalfNeighborhoodSize = (NeighborhoodSize - 1) / 2;
+		int Index = 0;
+		uchar* pNeighborhood = new uchar[m_NeighborhoodSize]();
 
-		for (int RowIndex = vPoint.y - HalfNeighborhoodSize; RowIndex < vPoint.y; ++RowIndex)
+		for (int RowIndex = vPoint.y - m_HalfTemplateSize; RowIndex < vPoint.y; ++RowIndex)
 		{
-			for (int ColIndex = vPoint.x - HalfNeighborhoodSize; ColIndex <= vPoint.x + HalfNeighborhoodSize; ++ColIndex)
+			for (int ColIndex = vPoint.x - m_HalfTemplateSize; ColIndex <= vPoint.x + m_HalfTemplateSize; ++ColIndex)
 			{
 				CvPoint Point;
 				RowIndex < 0 ? Point.y = vImage.rows + RowIndex : Point.y = RowIndex;
 				ColIndex < 0 ? Point.x = vImage.cols + ColIndex : ColIndex >= vImage.cols ? Point.x = ColIndex - vImage.cols : Point.x = ColIndex;
 
-				voNeighborhoods.push_back(vImage.ptr<uchar>(Point.y) + Point.x * vImage.channels());
+				memcpy(pNeighborhood + Index, vImage.ptr<uchar>(Point.y) + Point.x * vImage.channels(), vImage.channels());
+				Index += vImage.channels();
+
+				_ASSERT(Index <= m_NeighborhoodSize);
 			}
 		}
 
 		auto pRows = vImage.ptr<uchar>(vPoint.y);
-		for (int ColIndex = vPoint.x - HalfNeighborhoodSize; ColIndex <= vPoint.x; ++ColIndex)
+		for (int ColIndex = vPoint.x - m_HalfTemplateSize; ColIndex <= vPoint.x; ++ColIndex)
 		{
 			int x = (ColIndex < 0 ? vImage.cols + ColIndex : ColIndex);
-			voNeighborhoods.push_back(pRows + x * vImage.channels());
+
+			memcpy(pNeighborhood + Index, pRows + x * vImage.channels(), vImage.channels());
+			Index += vImage.channels();
+
+			_ASSERT(Index <= m_NeighborhoodSize);
 		}
+
+		return pNeighborhood;
 	}
 }
