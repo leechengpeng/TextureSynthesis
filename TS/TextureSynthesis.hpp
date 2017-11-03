@@ -2,7 +2,9 @@
 #include <ctime>
 #include <vector>
 #include <opencv2\core.hpp>
+
 #include "TSVQ.hpp"
+#include "KMeans.hpp"
 
 namespace TS
 {
@@ -28,7 +30,7 @@ namespace TS
 		int m_HalfTemplateSize;
 	};
 
-	TextureSynthesis::TextureSynthesis() : m_TemplateSize(9), m_Level(1), m_NeighborhoodSize(0), m_HalfTemplateSize(0)
+	TextureSynthesis::TextureSynthesis() : m_TemplateSize(15), m_Level(1), m_NeighborhoodSize(0), m_HalfTemplateSize(0)
 	{
 
 	}
@@ -53,11 +55,20 @@ namespace TS
 		std::vector<uchar*> SampleNeighborhoods;
 		__calSampleNeighborhoods(vSampleTexture, SampleNeighborhoods);
 
-		LLL::TSVQ<uchar> Accelerator;
+		//LLL::TSVQ<uchar> Accelerator;
+		//if (vAccelerate)
+		//{
+		//	Accelerator.build(SampleNeighborhoods, m_NeighborhoodSize, 1000);	//FIXME: magic number
+		//}
+
+		unsigned vK = 100;
+		LT::KMeans<uchar> Accelerator;
+		std::vector<int> Labels(SampleNeighborhoods.size());
 		if (vAccelerate)
 		{
-			Accelerator.build(SampleNeighborhoods, m_NeighborhoodSize, 100);	//FIXME: magic number
+			Accelerator.cluster(SampleNeighborhoods, m_NeighborhoodSize, vK, Labels, LT::KMEANS_UNIFORM);
 		}
+		auto KMeans = Accelerator.getKMeans();
 
 		for (int RowIndex = 0, Channels = vTexture.channels(); RowIndex < vTexture.rows; ++RowIndex)
 		{
@@ -69,7 +80,36 @@ namespace TS
 				const uchar* MostSimilarPixel = nullptr;
 				if (vAccelerate)
 				{
-					MostSimilarPixel = Accelerator.quantizeVector(pNeighborhood);
+					// MostSimilarPixel = Accelerator.quantizeVector(pNeighborhood);
+					
+					size_t Index = 0;
+					auto MinIndex = Index;
+					auto MinDistance = __calEuclideanDistance(pNeighborhood, KMeans[MinIndex], m_NeighborhoodSize);
+					MostSimilarPixel = KMeans[MinIndex];
+
+					for (++Index; Index < vK; ++Index)
+					{
+						double Distance = __calEuclideanDistance(pNeighborhood, KMeans[Index], m_NeighborhoodSize);
+						if (Distance < MinDistance)
+						{
+							MinDistance = Distance;
+							MinIndex = Index;
+							MostSimilarPixel = KMeans[Index];
+						}
+					}
+
+					for (size_t i = 0; i < Labels.size(); ++i)
+					{
+						if (Labels[i] == MinIndex)
+						{
+							double Distance = __calEuclideanDistance(pNeighborhood, SampleNeighborhoods[i], m_NeighborhoodSize);
+							if (Distance < MinDistance)
+							{
+								MinDistance = Distance;
+								MostSimilarPixel = SampleNeighborhoods[i];
+							}
+						}
+					}
 				}
 				else
 				{
@@ -79,6 +119,8 @@ namespace TS
 
 				_ASSERT(MostSimilarPixel);
 				memcpy(pRows + ColIndex * vSampleTexture.channels(), MostSimilarPixel, vSampleTexture.channels());
+
+				int i = 0;
 			}
 		}
 	}
@@ -122,7 +164,7 @@ namespace TS
 			Sum += Difference * Difference;
 		}
 
-		return Sum;
+		return sqrt(Sum);
 	}
 
 	// *********************************************************

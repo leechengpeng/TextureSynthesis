@@ -39,6 +39,7 @@ namespace LLL
 		void build(const std::vector<T*>& vVectorSet, unsigned vDim, unsigned vCodeVectorsNums, unsigned vMaxInterations, double vEpsilon);
 
 		const T* quantizeVector(const T *vVector) const;
+		const T* quantizeTreeVector(const T *vVector) const;
 
 	private:
 		typedef _SNode<T> SNode;
@@ -53,6 +54,7 @@ namespace LLL
 
 		double m_Epsilon;
 		SNode* m_RootNode;
+		std::vector<SNode*> m_Codebook;
 
 		unsigned int m_Dim;
 		unsigned int m_MaxInterations; 
@@ -115,6 +117,8 @@ namespace LLL
 
 			swap(SplitNodeSet, NodeSet);
 		}
+
+		m_Codebook = NodeSet;
 	}
 
 	//******************************************************************************
@@ -154,6 +158,40 @@ namespace LLL
 	template <typename T>
 	const T* TSVQ<T>::quantizeVector(const T *vVector) const
 	{
+		_ASSERT(vVector && !m_Codebook.empty());
+
+		double MinDistance = __distance(vVector, m_Codebook[0]->CodeVectors);
+		SNode* pNode = m_Codebook[0];
+
+		for (size_t i = 1; i < m_Codebook.size(); ++i)
+		{
+			double Distance = __distance(vVector, m_Codebook[i]->CodeVectors);
+			if (Distance < MinDistance)
+			{
+				MinDistance = Distance;
+				pNode = m_Codebook[i];
+			}
+		}
+
+		T* Result = pNode->CodeVectors;
+		for (auto Vector : pNode->VectorsSet)
+		{
+			double Distance = __distance(vVector, Vector);
+			if (Distance < MinDistance)
+			{
+				MinDistance = Distance;
+				Result = Vector;
+			}
+		}
+
+		return Result;
+	}
+
+	//******************************************************************************
+	//FUNCTION:
+	template <typename T>
+	const T* TSVQ<T>::quantizeTreeVector(const T *vVector) const
+	{
 		_ASSERT(vVector);
 
 		auto Node = m_RootNode;
@@ -167,7 +205,20 @@ namespace LLL
 			LeftDistance < RightDistance ? Node = Node->pLeft : Node = Node->pRight;
 		}
 
-		return Node->CodeVectors;
+		double MinDistance = __distance(vVector, Node->CodeVectors);
+		T* Result = Node->CodeVectors;
+
+		for (auto Vector : Node->VectorsSet)
+		{
+			double Distance = __distance(vVector, Vector);
+			if (Distance < MinDistance)
+			{
+				MinDistance = Distance;
+				Result = Vector;
+			}
+		}
+
+		return Result;
 	}
 
 	//******************************************************************************

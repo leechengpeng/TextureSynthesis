@@ -14,13 +14,13 @@ int main()
 		return -1;
 	}
 
-	unsigned TextureSize = 128;
+	unsigned TextureSize = 256;
 	cv::Mat SynthesisTexture(TextureSize, TextureSize, Sample.type());
 
 	clock_t Start = clock();
 
 	TS::TextureSynthesis TS;
-	TS.synthesize(Sample, SynthesisTexture, true);
+	TS.synthesize(Sample, SynthesisTexture, false);
 
 	clock_t End = clock();
 	std::cout << "Time-consuming is: " << (End - Start) / 1000.0 << "s" << std::endl;

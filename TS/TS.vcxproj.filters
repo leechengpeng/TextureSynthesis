@@ -26,5 +26,8 @@
     <ClInclude Include="TSVQ.hpp">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="KMeans.hpp">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
 </Project>
