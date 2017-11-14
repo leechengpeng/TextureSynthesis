@@ -55,20 +55,21 @@ namespace TS
 		std::vector<uchar*> SampleNeighborhoods;
 		__calSampleNeighborhoods(vSampleTexture, SampleNeighborhoods);
 
+		// Accelerating with TSVQ
 		//LLL::TSVQ<uchar> Accelerator;
 		//if (vAccelerate)
 		//{
 		//	Accelerator.build(SampleNeighborhoods, m_NeighborhoodSize, 1000);	//FIXME: magic number
 		//}
 
+		// Accelerating with KMeans
 		unsigned vK = 100;
 		LT::KMeans<uchar> Accelerator;
 		std::vector<int> Labels(SampleNeighborhoods.size());
 		if (vAccelerate)
 		{
-			Accelerator.cluster(SampleNeighborhoods, m_NeighborhoodSize, vK, Labels, LT::KMEANS_UNIFORM);
+			Accelerator.cluster(SampleNeighborhoods, m_NeighborhoodSize, vK, Labels, LT::KMEANS_UNIFORM_CENTERS);
 		}
-		auto KMeans = Accelerator.getKMeans();
 
 		for (int RowIndex = 0, Channels = vTexture.channels(); RowIndex < vTexture.rows; ++RowIndex)
 		{
@@ -84,17 +85,17 @@ namespace TS
 					
 					size_t Index = 0;
 					auto MinIndex = Index;
-					auto MinDistance = __calEuclideanDistance(pNeighborhood, KMeans[MinIndex], m_NeighborhoodSize);
-					MostSimilarPixel = KMeans[MinIndex];
+					auto MinDistance = __calEuclideanDistance(pNeighborhood, Accelerator.getMean(MinIndex), m_NeighborhoodSize);
+					MostSimilarPixel = Accelerator.getMean(MinIndex);
 
 					for (++Index; Index < vK; ++Index)
 					{
-						double Distance = __calEuclideanDistance(pNeighborhood, KMeans[Index], m_NeighborhoodSize);
+						double Distance = __calEuclideanDistance(pNeighborhood, Accelerator.getMean(Index), m_NeighborhoodSize);
 						if (Distance < MinDistance)
 						{
 							MinDistance = Distance;
 							MinIndex = Index;
-							MostSimilarPixel = KMeans[Index];
+							MostSimilarPixel = Accelerator.getMean(Index);
 						}
 					}
 
